@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css"
+    />
+    <title>XRP Wallet Application</title>
+    <style>
+      .container {
+        padding: 1rem;
+      }
+      .grid {
+        display: grid;
+        gap: 1rem;
+      }
+      .wallet-details {
+        font-size: 1.5rem;
+        justify-content: space-between;
+        display: flex;
+        margin-bottom: 2rem;
+      }
+      .wallet-address {
+        /* keep in left side */
+        text-align: left;
+      }
+      .wallet-balance {
+        /* keep in right side */
+        text-align: right;
+      }
+      .max-button {
+        background-color: #ff6600;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+      .send-button {
+        width: 100%;
+        padding: 1rem;
+        background-color: #ff6600;
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      footer {
+        margin-top: 2rem;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="container-fluid">
+      <ul>
+        <li><strong>XRP Wallet</strong></li>
+      </ul>
+      <ul>
+        <li><a href="#" role="button" id="faucet">Create Fund Wallet</a></li>
+      </ul>
+    </nav>
+
+    <main class="container">
+      <div class="grid">
+        <section>
+          <hgroup>
+            <h2>Wallet Overview</h2>
+          </hgroup>
+          <div class="wallet-details">
+            <div class="wallet-address">
+              Address: <strong><span id="address">-</span></strong>
+            </div>
+            <div class="wallet-balance">
+              Balance: <strong><span id="balance">-</span> XRP</strong>
+            </div>
+          </div>
+          <form>
+            <label for="seed">Enter your wallet seed:</label>
+            <input
+              type="text"
+              id="seed"
+              name="seed"
+              placeholder="Seed"
+              required
+            />
+            <button type="submit" id="addwalletbutton">Add Wallet</button>
+          </form>
+          <hgroup>
+            <h2>Send XRP</h2>
+          </hgroup>
+          <form>
+            <label for="receiver-address">Receiver Address:</label>
+            <input
+              type="text"
+              id="receiver-address"
+              name="receiver-address"
+              placeholder="Address"
+              required
+            />
+            <label for="amount">Amount:</label>
+            <input
+              type="text"
+              id="amount"
+              name="amount"
+              placeholder="0.00"
+              required
+            />
+            <button type="submit" class="send-button" id="sendpayment">
+              Send Payment
+            </button>
+            <p id="sendpaymentstatus"></p>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <footer class="container">
+      <small>
+        <a href="#">Terms of Use</a> • <a href="#">Privacy Policy</a>
+      </small>
+    </footer>
+
+    <script src="https://unpkg.com/xrpl/build/xrpl-latest-min.js"></script>
+
+    <script>
+      window.client = new xrpl.Client("wss://s.altnet.rippletest.net:51233");
+
+      document
+        .getElementById("addwalletbutton")
+        .addEventListener("click", addWalletBySeed);
+      document.getElementById("faucet").addEventListener("click", faucet);
+      document
+        .getElementById("sendpayment")
+        .addEventListener("click", sendFunds);
+
+      let addWalletDisabled = false;
+      async function addWalletBySeed(event) {
+        if (addWalletDisabled) return;
+
+        document.getElementById("addwalletbutton").style.opacity = 0.5;
+        const oldText = document.getElementById("addwalletbutton").innerHTML;
+        document.getElementById("addwalletbutton").innerHTML =
+          "Getting Wallet info...";
+        addWalletDisabled = true;
+
+        try {
+          event.preventDefault();
+          await client.connect();
+          const seedInput = document.getElementById("seed");
+          const seed = seedInput.value;
+          try {
+            const wallet = xrpl.Wallet.fromSeed(seed);
+            window.wallet = wallet;
+
+            document.getElementById("address").innerHTML = wallet.address;
+
+            const response = await client.getXrpBalance(wallet.address);
+            console.log({ response });
+            document.getElementById("balance").innerHTML = response;
+          } catch (error) {
+            console.log("Error while trying to add the wallet...", error);
+          }
+        } catch (error) {
+          console.log("Error while trying to add the wallet...", error);
+        } finally {
+          document.getElementById("addwalletbutton").style.opacity = 1;
+          document.getElementById("addwalletbutton").innerHTML = oldText;
+          addWalletDisabled = false;
+        }
+      }
+
+      let faucetDisabled = false;
+      async function faucet() {
+        if (faucetDisabled) return;
+        document.getElementById("faucet").style.opacity = 0.5;
+        const oldText = document.getElementById("faucet").innerHTML;
+        document.getElementById("faucet").innerHTML = "Funding...";
+        faucetDisabled = true;
+        try {
+          await client.connect();
+          const wallet = await client.fundWallet();
+          console.log({ wallet });
+          window.wallet = wallet.wallet;
+
+          document.getElementById("seed").value = wallet.wallet.seed;
+          document.getElementById("addwalletbutton").click();
+        } catch (error) {
+          console.error("Error while adding the wallet", error);
+        } finally {
+          document.getElementById("faucet").style.opacity = 1;
+          document.getElementById("faucet").innerHTML = oldText;
+          faucetDisabled = false;
+        }
+      }
+
+      let sendFundsDisabled = false;
+
+      async function sendFunds(event) {
+        event.preventDefault();
+        if (sendFundsDisabled) return;
+
+        document.getElementById("sendpayment").style.opacity = 0.5;
+        const oldText = document.getElementById("sendpayment").innerHTML;
+        document.getElementById("sendpayment").innerHTML = "Sending ...";
+        sendFundsDisabled = true;
+        document.getElementById("sendpaymentstatus").innerHTML = "";
+
+        try {
+          const receiverAddressInput =
+            document.getElementById("receiver-address");
+          const amountInput = document.getElementById("amount");
+          const receiverAddress = receiverAddressInput.value;
+          const amount = amountInput.value;
+
+          await client.connect();
+          const preparedTx = await client.autofill({
+            TransactionType: "Payment",
+            Account: wallet.address,
+            Amount: xrpl.xrpToDrops(amount),
+            Destination: receiverAddress,
+          });
+
+          const signedTx = wallet.sign(preparedTx);
+          const txResult = await client.submitAndWait(signedTx.tx_blob);
+
+          console.log({ txResult });
+
+          const newBalance = await client.getXrpBalance(wallet.address);
+          document.getElementById("balance").innerHTML = newBalance;
+
+          document.getElementById(
+            "sendpaymentstatus"
+          ).innerHTML = `Transaction is successfully passed with the hash: ${txResult.result.hash}`;
+
+          receiverAddress.value = "";
+          amountInput.value = "";
+        } catch (error) {
+          console.error("Error while sending the funds", error);
+        } finally {
+          document.getElementById("sendpayment").innerHTML = oldText;
+          document.getElementById("sendpayment").style.opacity = 1;
+          sendFundsDisabled = false;
+        }
+      }
+    </script>
+  </body>
+</html>
